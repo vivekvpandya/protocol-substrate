@@ -1519,6 +1519,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if 1.0.0",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "constant_time_eq"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3407,8 +3417,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7fcd999463524c52659517fe2cea98493cfe485d10565e7b0fb07dbba7ad2753"
 dependencies = [
  "cfg-if 1.0.0",
+ "js-sys",
  "libc",
  "wasi 0.10.0+wasi-snapshot-preview1",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -6225,6 +6237,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "frame-system-benchmarking",
+ "hex",
  "orml-currencies",
  "orml-tokens",
  "orml-traits",
@@ -6240,6 +6253,7 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
+ "wasm-utils",
 ]
 
 [[package]]
@@ -12325,6 +12339,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "632f73e236b219150ea279196e54e610f5dbafa5d61786303d4da54f84e47fce"
 dependencies = [
  "cfg-if 1.0.0",
+ "serde",
+ "serde_json",
  "wasm-bindgen-macro",
 ]
 
@@ -12408,6 +12424,31 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "wasm-utils"
+version = "0.1.0"
+dependencies = [
+ "ark-crypto-primitives",
+ "ark-ed-on-bn254",
+ "ark-ff",
+ "ark-serialize",
+ "ark-std",
+ "arkworks-circuits",
+ "arkworks-gadgets",
+ "arkworks-utils",
+ "bincode",
+ "console_error_panic_hook",
+ "curve25519-dalek 3.2.0",
+ "getrandom 0.2.3",
+ "hex",
+ "js-sys",
+ "merlin",
+ "rand 0.8.4",
+ "wasm-bindgen",
+ "web-sys",
+ "webb-pedersen-hash",
 ]
 
 [[package]]
@@ -12604,6 +12645,17 @@ checksum = "38eb105f1c59d9eaa6b5cdc92b859d85b926e82cb2e0945cd0c9259faa6fe9fb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "webb-pedersen-hash"
+version = "0.1.0"
+source = "git+https://github.com/webb-tools/webb-rs.git#44f95e45f10d0e6787a3a83ef9936fb09b3ab4ad"
+dependencies = [
+ "ark-crypto-primitives",
+ "ark-ed-on-bn254",
+ "ark-ff",
+ "rand_chacha 0.3.1",
 ]
 
 [[package]]

@@ -1,4 +1,6 @@
-use crate::test_utils::*;
+use crate::{mock::*, test_utils::*};
+use ark_serialize::CanonicalSerialize;
+use ark_std::fs::canonicalize;
 use arkworks_utils::utils::common::{setup_params_x5_3, Curve};
 use codec::Encode;
 use darkwebb_primitives::{merkle_tree::TreeInspector, AccountId, ElementTrait};
@@ -7,8 +9,12 @@ use frame_support::{assert_err, assert_ok, traits::OnInitialize};
 use orml_traits::MultiCurrency;
 use pallet_asset_registry::AssetType;
 use sp_runtime::traits::{One, Zero};
-
-use crate::mock::*;
+use wasm_utils::{
+	note,
+	note::NoteBuilder,
+	proof::{ZKProof, ZkProofBuilder},
+	types,
+};
 
 const SEED: u32 = 0;
 
@@ -107,14 +113,64 @@ fn mixer_works() {
 		let relayer_account_id = account::<AccountId>("", 0, SEED);
 		let fee_value = 0;
 		let refund_value = 0;
-
 		// inputs
 		let recipient_bytes = crate::truncate_and_pad(&recipient_account_id.encode()[..]);
 		let relayer_bytes = crate::truncate_and_pad(&relayer_account_id.encode()[..]);
+		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element, leaf_private) = setup_zk_circuit(
+			curve,
+			recipient_bytes.clone(),
+			relayer_bytes.clone(),
+			pk_bytes.clone(),
+			fee_value,
+			refund_value,
+		);
+		let mut secr = leaf_private;
 
-		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element) =
-			setup_zk_circuit(curve, recipient_bytes, relayer_bytes, pk_bytes, fee_value, refund_value);
+		secr.append(&mut leaf_element.to_vec());
+		secr.append(&mut nullifier_hash_element.to_vec());
+		// wasm-utils
+		let mut note_builder = NoteBuilder::default();
+		note_builder.backend = types::Backend::Arkworks;
+		note_builder.curve = types::Curve::Bn254;
+		note_builder.width = "3".to_string();
+		note_builder.exponentiation = "5".to_string();
+		note_builder.amount = "1".to_string();
+		note_builder.hash_function = types::HashFunction::Poseidon;
+		note_builder.secrets = Some(secr.clone());
+		let deposit_note = note_builder.generate_note().unwrap();
+		let mut proof_builder = ZkProofBuilder::new();
+		let mut leaf_slice = [0u8; 32];
+		leaf_slice.copy_from_slice(&leaf_element.to_vec()[..]);
+		dbg!(hex::encode(&leaf_slice), hex::encode(&leaf_element.to_bytes()));
+		proof_builder.set_leaves(&vec![leaf_slice]);
+		proof_builder.set_note(deposit_note);
+		proof_builder.set_fee(fee_value);
+		proof_builder.set_refund(refund_value);
+		proof_builder.set_recipient(&recipient_account_id.encode()[..]);
+		proof_builder.set_relayer(&relayer_account_id.encode()[..]);
+		proof_builder.set_leaf_index(0);
+		proof_builder.set_proving_key(&pk_bytes);
+		let proof = proof_builder.build();
+		let mut proof_bytes_wasm = Vec::new();
+		let root_meta = match proof {
+			ZKProof::Bls12_381(proof, proof_meta) => {
+				CanonicalSerialize::serialize(&proof, &mut proof_bytes_wasm).unwrap();
+				proof_meta
+			}
+			ZKProof::Bn254(proof, proof_meta) => {
+				CanonicalSerialize::serialize(&proof, &mut proof_bytes_wasm).unwrap();
+				proof_meta
+			}
+		};
+		// same root
+		assert_eq!(hex::encode(&roots_element[0].to_bytes()), hex::encode(&root_meta.root));
+		// same nullifier
+		assert_eq!(
+			hex::encode(&nullifier_hash_element.to_bytes()),
+			hex::encode(root_meta.nullified_hash.clone())
+		);
 
+		// assert_eq!(hex::encode(&proof_bytes), hex::encode(&proof_bytes_wasm));
 		assert_ok!(Mixer::deposit(
 			Origin::signed(sender_account_id.clone()),
 			tree_id,
@@ -125,13 +181,12 @@ fn mixer_works() {
 
 		let mixer_tree_root = MerkleTree::get_root(tree_id).unwrap();
 		assert_eq!(roots_element[0], mixer_tree_root);
-
 		assert_ok!(Mixer::withdraw(
 			Origin::signed(sender_account_id),
 			tree_id,
-			proof_bytes,
-			roots_element[0],
-			nullifier_hash_element,
+			proof_bytes_wasm,
+			Element::from_bytes(root_meta.root.as_slice()),
+			Element::from_bytes(root_meta.nullified_hash.as_slice()),
 			recipient_account_id.clone(),
 			relayer_account_id,
 			fee_value.into(),
@@ -164,7 +219,7 @@ fn mixer_should_fail_with_when_proof_when_any_byte_is_changed_in_proof() {
 		let recipient_bytes = crate::truncate_and_pad(&recipient_account_id.encode()[..]);
 		let relayer_bytes = crate::truncate_and_pad(&relayer_account_id.encode()[..]);
 
-		let (mut proof_bytes, roots_element, nullifier_hash_element, leaf_element) =
+		let (mut proof_bytes, roots_element, nullifier_hash_element, leaf_element, ..) =
 			setup_zk_circuit(curve, recipient_bytes, relayer_bytes, pk_bytes, fee_value, refund_value);
 
 		assert_ok!(Mixer::deposit(
@@ -220,7 +275,7 @@ fn mixer_should_fail_when_invalid_merkle_roots() {
 		let recipient_bytes = crate::truncate_and_pad(&recipient_account_id.encode()[..]);
 		let relayer_bytes = crate::truncate_and_pad(&relayer_account_id.encode()[..]);
 
-		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element) =
+		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element, ..) =
 			setup_zk_circuit(curve, recipient_bytes, relayer_bytes, pk_bytes, fee_value, refund_value);
 
 		assert_ok!(Mixer::deposit(
@@ -274,7 +329,7 @@ fn mixer_should_fail_when_relayer_id_is_different_from_that_in_proof_generation(
 		let recipient_bytes = crate::truncate_and_pad(&recipient_account_id.encode()[..]);
 		let relayer_bytes = crate::truncate_and_pad(&relayer_account_id.encode()[..]);
 
-		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element) =
+		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element, ..) =
 			setup_zk_circuit(curve, recipient_bytes, relayer_bytes, pk_bytes, fee_value, refund_value);
 
 		assert_ok!(Mixer::deposit(
@@ -324,7 +379,7 @@ fn mixer_should_fail_with_when_fee_submitted_is_changed() {
 		let recipient_bytes = crate::truncate_and_pad(&recipient_account_id.encode()[..]);
 		let relayer_bytes = crate::truncate_and_pad(&relayer_account_id.encode()[..]);
 
-		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element) =
+		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element, ..) =
 			setup_zk_circuit(curve, recipient_bytes, relayer_bytes, pk_bytes, fee_value, refund_value);
 
 		assert_ok!(Mixer::deposit(
@@ -374,7 +429,7 @@ fn mixer_should_fail_with_invalid_proof_when_account_ids_are_truncated_in_revers
 		let recipient_bytes = truncate_and_pad_reverse(&recipient_account_id.encode()[..]);
 		let relayer_bytes = truncate_and_pad_reverse(&relayer_account_id.encode()[..]);
 
-		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element) =
+		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element, ..) =
 			setup_zk_circuit(curve, recipient_bytes, relayer_bytes, pk_bytes, fee_value, refund_value);
 
 		assert_ok!(Mixer::deposit(
@@ -424,7 +479,7 @@ fn double_spending_should_fail() {
 		let recipient_bytes = crate::truncate_and_pad(&recipient_account_id.encode()[..]);
 		let relayer_bytes = crate::truncate_and_pad(&relayer_account_id.encode()[..]);
 
-		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element) =
+		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element, ..) =
 			setup_zk_circuit(curve, recipient_bytes, relayer_bytes, pk_bytes, fee_value, refund_value);
 
 		assert_ok!(Mixer::deposit(
@@ -500,7 +555,7 @@ fn deposit_with_non_native_asset_should_work() {
 		let recipient_bytes = crate::truncate_and_pad(&recipient_account_id.encode()[..]);
 		let relayer_bytes = crate::truncate_and_pad(&relayer_account_id.encode()[..]);
 
-		let (_, _, _, leaf_element) =
+		let (_, _, _, leaf_element, ..) =
 			setup_zk_circuit(curve, recipient_bytes, relayer_bytes, pk_bytes, fee_value, refund_value);
 		// check my balance first, before sending the deposit
 		assert_eq!(Currencies::free_balance(currency_id, &sender_account_id), Zero::zero());

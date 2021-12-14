@@ -15,6 +15,7 @@ use arkworks_utils::{
 use darkwebb_primitives::ElementTrait;
 
 use crate::mock::Element;
+use arkworks_gadgets::leaf::mixer::Private;
 
 type Bn254Fr = ark_bn254::Fr;
 type Bls12_381Fr = ark_bls12_381::Fr;
@@ -57,7 +58,7 @@ pub fn setup_zk_circuit(
 	pk_bytes: Vec<u8>,
 	fee_value: u32,
 	refund_value: u32,
-) -> (ProofBytes, RootsElement, NullifierHashElement, LeafElement) {
+) -> (ProofBytes, RootsElement, NullifierHashElement, LeafElement, Vec<u8>) {
 	let rng = &mut ark_std::test_rng();
 
 	match curve {
@@ -84,7 +85,7 @@ pub fn setup_zk_circuit(
 			// setup the circuit.
 			let circuit = Circuit_x5::new(
 				arbitrary_input,
-				leaf_private,
+				leaf_private.clone(),
 				params5_deserialized,
 				path,
 				root,
@@ -107,8 +108,20 @@ pub fn setup_zk_circuit(
 
 			let nullifier_hash_element = Element::from_bytes(&nullifier_hash.into_repr().to_bytes_le());
 			let leaf_element = Element::from_bytes(&leaf.into_repr().to_bytes_le());
-
-			(proof_bytes, roots_element, nullifier_hash_element, leaf_element)
+			let mut private_bytes = Vec::new();
+			let mut nul = Vec::new();
+			let mut sec = Vec::new();
+			leaf_private.secret().serialize(&mut sec).unwrap();
+			leaf_private.nullifier().serialize(&mut nul).unwrap();
+			private_bytes.append(&mut sec);
+			private_bytes.append(&mut nul);
+			(
+				proof_bytes,
+				roots_element,
+				nullifier_hash_element,
+				leaf_element,
+				private_bytes,
+			)
 		}
 		Curve::Bls381 => {
 			// fit inputs to the curve.
@@ -137,7 +150,7 @@ pub fn setup_zk_circuit(
 			// setup the circuit.
 			let circuit = Circuit_x5::new(
 				arbitrary_input,
-				leaf_private,
+				leaf_private.clone(),
 				params5_deserialized,
 				path,
 				root,
@@ -160,7 +173,20 @@ pub fn setup_zk_circuit(
 
 			let leaf_element = Element::from_bytes(&leaf.into_repr().to_bytes_le());
 
-			(proof_bytes, roots_element, nullifier_hash_element, leaf_element)
+			let mut private_bytes = Vec::new();
+			let mut nul = Vec::new();
+			let mut sec = Vec::new();
+			leaf_private.secret().serialize(&mut sec).unwrap();
+			leaf_private.nullifier().serialize(&mut nul).unwrap();
+			private_bytes.append(&mut sec);
+			private_bytes.append(&mut nul);
+			(
+				proof_bytes,
+				roots_element,
+				nullifier_hash_element,
+				leaf_element,
+				private_bytes,
+			)
 		}
 	}
 }
