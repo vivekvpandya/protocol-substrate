@@ -81,6 +81,8 @@ use sp_std::prelude::*;
 
 use frame_support::log::Log;
 pub use pallet::*;
+use sp_runtime::print;
+use sp_std::if_std;
 pub use weights::WeightInfo;
 
 /// Type alias for the orml_traits::MultiCurrency::Balance type
@@ -301,11 +303,24 @@ impl<T: Config<I>, I: 'static> MixerInterface<T::AccountId, BalanceOf<T, I>, Cur
 		fee: BalanceOf<T, I>,
 		refund: BalanceOf<T, I>,
 	) -> Result<(), DispatchError> {
-		frame_support::log::info!("{}", hex::encode(&root.to_bytes()));
-		frame_support::log::info!("{}", hex::encode(&nullifier_hash.to_bytes()));
-		frame_support::log::info!("{}", hex::encode(&recipient.encode()));
-		frame_support::log::info!("{}", hex::encode(&recipient.encode()));
-		frame_support::log::info!("{}", hex::encode(&proof_bytes));
+		if_std! {
+			println!("id: {}", hex::encode(&id.encode()));
+			println!("proof: {}", hex::encode(&proof_bytes));
+			println!("root: {}", hex::encode(&root.to_bytes()));
+			println!("nullifier: {}", hex::encode(&nullifier_hash.to_bytes()));
+			println!("recipient: {}", hex::encode(&recipient.encode()));
+			println!("relayer: {}", hex::encode(&relayer.encode()));
+			println!("fee: {}", hex::encode(&fee.encode()));
+			println!("refund: {}", hex::encode(&refund.encode()));
+		}
+		frame_support::log::info!("id: {}", hex::encode(&id.encode()));
+		frame_support::log::info!("proof: {}", hex::encode(&proof_bytes));
+		frame_support::log::info!("root: {}", hex::encode(&root.to_bytes()));
+		frame_support::log::info!("nullifier: {}", hex::encode(&nullifier_hash.to_bytes()));
+		frame_support::log::info!("recipient: {}", hex::encode(&recipient.encode()));
+		frame_support::log::info!("relayer: {}", hex::encode(&relayer.encode()));
+		frame_support::log::info!("fee: {}", hex::encode(&fee.encode()));
+		frame_support::log::info!("refund: {}", hex::encode(&refund.encode()));
 		let mixer = Self::get_mixer(id)?;
 		// Check if local root is known
 		ensure!(T::Tree::is_known_root(id, root)?, Error::<T, I>::UnknownRoot);

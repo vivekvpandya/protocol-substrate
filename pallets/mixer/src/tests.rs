@@ -127,19 +127,10 @@ fn mixer_works() {
 		let sender_account_id = account::<AccountId>("", 1, SEED);
 		let recipient_account_id = account::<AccountId>("", 2, SEED);
 		let relayer_account_id = account::<AccountId>("", 0, SEED);
-		dbg!(format!(
-			"sender_account_id {} relayer_account_id {} recipient_account_id{}",
-			sender_account_id, relayer_account_id, recipient_account_id
-		));
 		let fee_value = 0;
 		let refund_value = 0;
 		// inputs
 		let recipient_bytes = crate::truncate_and_pad(&recipient_account_id.encode()[..]);
-		println!(
-			"recipient_account_id {} => recipient_account bytes {}",
-			&recipient_account_id,
-			hex::encode(&recipient_bytes)
-		);
 		let relayer_bytes = crate::truncate_and_pad(&relayer_account_id.encode()[..]);
 		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element, leaf_private) = setup_zk_circuit(
 			curve,
@@ -149,7 +140,27 @@ fn mixer_works() {
 			fee_value,
 			refund_value,
 		);
-		let mut secr = leaf_private;
+		let mut secr = leaf_private.clone();
+
+		// test root:
+		// "6caaa2fea7789832bb2df2e74921c8058e5c66e8a842fe9d389864c006e0492b"
+
+		// test nullifier hash:
+		// "73885497ce984e77cf71f14851edfbe3a2bf9d820ddeff2615aa146721a7f528"
+
+		// test leaf:
+		// "73885497ce984e77cf71f14851edfbe3a2bf9d820ddeff2615aa146721a7f528"
+
+		// test leaf private:
+		// "8f78c7181aaf1f7d9a7ff5eb8439e5043cff03ea69106dcf108b49eb8911f0027e11402971ab2356e8e971b45188669645da354d0227436ea04861c13e4a000d"
+		//
+		println!("test roots: {:?}", hex::encode(roots_element[0].to_vec()));
+		println!(
+			"test nullifier hash: {:?}",
+			hex::encode(nullifier_hash_element.to_vec())
+		);
+		println!("test leaf: {:?}", hex::encode(nullifier_hash_element.to_vec()));
+		println!("test leaf private: {:?}", hex::encode(leaf_private));
 
 		secr.append(&mut leaf_element.to_vec());
 		secr.append(&mut nullifier_hash_element.to_vec());
@@ -163,10 +174,11 @@ fn mixer_works() {
 		note_builder.hash_function = types::HashFunction::Poseidon;
 		note_builder.secrets = Some(secr.clone());
 		let deposit_note = note_builder.generate_note().unwrap();
+
+		// Making the proof
 		let mut proof_builder = ZkProofBuilder::new();
 		let mut leaf_slice = [0u8; 32];
 		leaf_slice.copy_from_slice(&leaf_element.to_vec()[..]);
-		dbg!(hex::encode(&leaf_slice), hex::encode(&leaf_element.to_bytes()));
 		proof_builder.set_leaves(&vec![leaf_slice]);
 		proof_builder.set_note(deposit_note);
 		proof_builder.set_fee(fee_value);
