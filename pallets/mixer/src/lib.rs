@@ -71,6 +71,7 @@ use darkwebb_primitives::{
 		mixer::{MixerInspector, MixerInterface},
 	},
 	verifier::*,
+	ElementTrait,
 };
 use frame_support::{
 	ensure, pallet_prelude::DispatchError, sp_runtime::traits::AccountIdConversion, traits::Get, PalletId,
@@ -78,6 +79,7 @@ use frame_support::{
 use orml_traits::MultiCurrency;
 use sp_std::prelude::*;
 
+use frame_support::log::Log;
 pub use pallet::*;
 pub use weights::WeightInfo;
 
@@ -299,6 +301,11 @@ impl<T: Config<I>, I: 'static> MixerInterface<T::AccountId, BalanceOf<T, I>, Cur
 		fee: BalanceOf<T, I>,
 		refund: BalanceOf<T, I>,
 	) -> Result<(), DispatchError> {
+		frame_support::log::info!("{}", hex::encode(&root.to_bytes()));
+		frame_support::log::info!("{}", hex::encode(&nullifier_hash.to_bytes()));
+		frame_support::log::info!("{}", hex::encode(&recipient.encode()));
+		frame_support::log::info!("{}", hex::encode(&recipient.encode()));
+		frame_support::log::info!("{}", hex::encode(&proof_bytes));
 		let mixer = Self::get_mixer(id)?;
 		// Check if local root is known
 		ensure!(T::Tree::is_known_root(id, root)?, Error::<T, I>::UnknownRoot);

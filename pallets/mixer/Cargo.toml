@@ -25,6 +25,7 @@ pallet-mt = {path = "../mt", default-features = false}
 pallet-verifier = {path = "../verifier", default-features = false}
 sp-runtime = {default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "master"}
 sp-std = {default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "master"}
+hex={default-features= false ,version="0.4.3"}
 
 frame-benchmarking = {default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "master", optional = true}
 frame-system-benchmarking = {default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "master", optional = true}
@@ -43,7 +44,6 @@ arkworks-gadgets  = { version = "0.4.5", default-features = false }
 arkworks-circuits = { version = "0.4.5", features = ["r1cs"], default-features = false }
 arkworks-utils    = { version = "0.4.5", features = ["default_poseidon", "default_mimc"], default-features = false }
 wasm-utils = { path="../../../webb.js/packages/wasm-utils" ,default-features = false  }
-hex="0.4.3"
 pallet-balances = {git = "https://github.com/paritytech/substrate.git", branch = "master"}
 pallet-asset-registry = { path = "../asset-registry" }
 serde = {version = "1.0.119"}
@@ -73,4 +73,5 @@ std = [
   "darkwebb-primitives/std",
   "pallet-asset-registry/std",
   "frame-benchmarking/std",
+  "hex/std",
 ]

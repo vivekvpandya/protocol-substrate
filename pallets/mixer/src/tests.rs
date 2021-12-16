@@ -1,6 +1,7 @@
 use crate::{mock::*, test_utils::*};
 use ark_serialize::CanonicalSerialize;
-use ark_std::fs::canonicalize;
+use ark_std::{fs::canonicalize, str::FromStr};
+use arkworks_circuits::prelude::ark_groth16::ProvingKey;
 use arkworks_utils::utils::common::{setup_params_x5_3, Curve};
 use codec::Encode;
 use darkwebb_primitives::{merkle_tree::TreeInspector, AccountId, ElementTrait};
@@ -97,12 +98,27 @@ fn should_be_able_to_change_the_maintainer() {
 		assert_eq!(current_maintainer_account_id, new_maintainer_account_id);
 	});
 }
-
+#[test]
+fn encoding_as_js() {
+	// account
+	let account_id = AccountId::from_str("jn5LuB5d51srpmZqiBNgWu11C6AeVxEygggjWsifcG1myqr").unwrap();
+	let account_id_hex = hex::encode(account_id.encode());
+	assert_eq!(
+		account_id_hex,
+		String::from("644277e80e74baf70c59aeaa038b9e95b400377d1fd09c87a6f8071bce185129")
+	)
+}
 #[test]
 fn mixer_works() {
+	use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+
 	new_test_ext().execute_with(|| {
 		let curve = Curve::Bn254;
 		let pk_bytes = setup_environment(curve);
+		let pk = ProvingKey::<ark_bn254::Bn254>::deserialize(&*pk_bytes).unwrap();
+		let mut uncompressed_key = vec![];
+		CanonicalSerialize::serialize_uncompressed(&pk, &mut uncompressed_key);
+
 		// now let's create the mixer.
 		let deposit_size = One::one();
 		assert_ok!(Mixer::create(Origin::root(), deposit_size, 30, 0));
@@ -111,10 +127,19 @@ fn mixer_works() {
 		let sender_account_id = account::<AccountId>("", 1, SEED);
 		let recipient_account_id = account::<AccountId>("", 2, SEED);
 		let relayer_account_id = account::<AccountId>("", 0, SEED);
+		dbg!(format!(
+			"sender_account_id {} relayer_account_id {} recipient_account_id{}",
+			sender_account_id, relayer_account_id, recipient_account_id
+		));
 		let fee_value = 0;
 		let refund_value = 0;
 		// inputs
 		let recipient_bytes = crate::truncate_and_pad(&recipient_account_id.encode()[..]);
+		println!(
+			"recipient_account_id {} => recipient_account bytes {}",
+			&recipient_account_id,
+			hex::encode(&recipient_bytes)
+		);
 		let relayer_bytes = crate::truncate_and_pad(&relayer_account_id.encode()[..]);
 		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element, leaf_private) = setup_zk_circuit(
 			curve,
@@ -149,7 +174,7 @@ fn mixer_works() {
 		proof_builder.set_recipient(&recipient_account_id.encode()[..]);
 		proof_builder.set_relayer(&relayer_account_id.encode()[..]);
 		proof_builder.set_leaf_index(0);
-		proof_builder.set_proving_key(&pk_bytes);
+		proof_builder.set_proving_key(&uncompressed_key);
 		let proof = proof_builder.build();
 		let mut proof_bytes_wasm = Vec::new();
 		let root_meta = match proof {
