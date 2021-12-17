@@ -1,8 +1,10 @@
 use crate::{mock::*, test_utils::*};
+use ark_ff::{BigInteger, FromBytes, PrimeField};
 use ark_serialize::CanonicalSerialize;
 use ark_std::{fs::canonicalize, str::FromStr};
-use arkworks_circuits::prelude::ark_groth16::ProvingKey;
-use arkworks_utils::utils::common::{setup_params_x5_3, Curve};
+use arkworks_circuits::{prelude::ark_groth16::ProvingKey, setup::common::PoseidonCRH_x5_5};
+use arkworks_gadgets::leaf::mixer::{MixerLeaf, Private};
+use arkworks_utils::utils::common::{setup_params_x5_3, setup_params_x5_5, Curve};
 use codec::Encode;
 use darkwebb_primitives::{merkle_tree::TreeInspector, AccountId, ElementTrait};
 use frame_benchmarking::account;
@@ -16,6 +18,7 @@ use wasm_utils::{
 	proof::{ZKProof, ZkProofBuilder},
 	types,
 };
+type Bn254Fr = ark_bn254::Fr;
 
 const SEED: u32 = 0;
 
@@ -132,38 +135,37 @@ fn mixer_works() {
 		// inputs
 		let recipient_bytes = crate::truncate_and_pad(&recipient_account_id.encode()[..]);
 		let relayer_bytes = crate::truncate_and_pad(&relayer_account_id.encode()[..]);
-		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element, leaf_private) = setup_zk_circuit(
-			curve,
-			recipient_bytes.clone(),
-			relayer_bytes.clone(),
-			pk_bytes.clone(),
-			fee_value,
-			refund_value,
+		// let (proof_bytes, roots_element, nullifier_hash_element, leaf_element, leaf_private) = setup_zk_circuit(
+		// 	curve,
+		// 	recipient_bytes.clone(),
+		// 	relayer_bytes.clone(),
+		// 	pk_bytes.clone(),
+		// 	fee_value,
+		// 	refund_value,
+		// );
+
+		let secr = hex::decode("1f183415fdc7512999283cffbed2d498f4f9910ead667d588bb8d4fee253f70bd022e5404322b738a5a7720787720805e397a5a7830798be88995880140e8001").unwrap();
+		let secret = &secr[..32];
+		let nullifier = &secr[32..64];
+
+		let secret_f = Bn254Fr::from_le_bytes_mod_order(secret);
+		let nullifier_f = Bn254Fr::from_le_bytes_mod_order(nullifier);
+
+		let leaf_private = Private::new(secret_f, nullifier_f);
+		// let params3 = setup_params_x5_3::<ark_bn254::Fr>(curve);
+		let params5 = setup_params_x5_5::<ark_bn254::Fr>(curve);
+		let leaf = MixerLeaf::<Bn254Fr, PoseidonCRH_x5_5<Bn254Fr>>::create_leaf(&leaf_private, &params5).unwrap();
+		let nullifier_hash = MixerLeaf::<Bn254Fr, PoseidonCRH_x5_5<Bn254Fr>>::create_nullifier(&leaf_private, &params5).unwrap();
+
+		let leaf_element = Element::from_bytes(&leaf.into_repr().to_bytes_le());
+
+		let nullifier_hash_element = Element::from_bytes(&nullifier_hash.into_repr().to_bytes_le());
+
+		let root_element = Element::from_bytes(
+			&hex::decode("fe409577fc56c38c5b8582d09e0ffc10653f4e3439e686207838a7284fa69d10").unwrap(),
 		);
-		let mut secr = leaf_private.clone();
+		let roots_element = vec![root_element];
 
-		// test root:
-		// "6caaa2fea7789832bb2df2e74921c8058e5c66e8a842fe9d389864c006e0492b"
-
-		// test nullifier hash:
-		// "73885497ce984e77cf71f14851edfbe3a2bf9d820ddeff2615aa146721a7f528"
-
-		// test leaf:
-		// "73885497ce984e77cf71f14851edfbe3a2bf9d820ddeff2615aa146721a7f528"
-
-		// test leaf private:
-		// "8f78c7181aaf1f7d9a7ff5eb8439e5043cff03ea69106dcf108b49eb8911f0027e11402971ab2356e8e971b45188669645da354d0227436ea04861c13e4a000d"
-		//
-		println!("test roots: {:?}", hex::encode(roots_element[0].to_vec()));
-		println!(
-			"test nullifier hash: {:?}",
-			hex::encode(nullifier_hash_element.to_vec())
-		);
-		println!("test leaf: {:?}", hex::encode(nullifier_hash_element.to_vec()));
-		println!("test leaf private: {:?}", hex::encode(leaf_private));
-
-		secr.append(&mut leaf_element.to_vec());
-		secr.append(&mut nullifier_hash_element.to_vec());
 		// wasm-utils
 		let mut note_builder = NoteBuilder::default();
 		note_builder.backend = types::Backend::Arkworks;
