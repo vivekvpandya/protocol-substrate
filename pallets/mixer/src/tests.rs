@@ -31,7 +31,7 @@ fn setup_environment(curve: Curve) -> Vec<u8> {
 		Curve::Bls381 => get_hash_params::<ark_bls12_381::Fr>(curve),
 	};
 	// 1. Setup The Hasher Pallet.
-	assert_ok!(HasherPallet::force_set_parameters(Origin::root(), params.0));
+	assert_ok!(HasherPallet::force_set_parameters(Origin::root(), params.1));
 	// 2. Initialize MerkleTree pallet.
 	<MerkleTree as OnInitialize<u64>>::on_initialize(1);
 	// 3. Setup the VerifierPallet
@@ -132,38 +132,7 @@ fn mixer_works() {
 		// inputs
 		let recipient_bytes = crate::truncate_and_pad(&recipient_account_id.encode()[..]);
 		let relayer_bytes = crate::truncate_and_pad(&relayer_account_id.encode()[..]);
-		let (proof_bytes, roots_element, nullifier_hash_element, leaf_element, leaf_private) = setup_zk_circuit(
-			curve,
-			recipient_bytes.clone(),
-			relayer_bytes.clone(),
-			pk_bytes.clone(),
-			fee_value,
-			refund_value,
-		);
-		let mut secr = leaf_private.clone();
 
-		// test root:
-		// "6caaa2fea7789832bb2df2e74921c8058e5c66e8a842fe9d389864c006e0492b"
-
-		// test nullifier hash:
-		// "73885497ce984e77cf71f14851edfbe3a2bf9d820ddeff2615aa146721a7f528"
-
-		// test leaf:
-		// "73885497ce984e77cf71f14851edfbe3a2bf9d820ddeff2615aa146721a7f528"
-
-		// test leaf private:
-		// "8f78c7181aaf1f7d9a7ff5eb8439e5043cff03ea69106dcf108b49eb8911f0027e11402971ab2356e8e971b45188669645da354d0227436ea04861c13e4a000d"
-		//
-		println!("test roots: {:?}", hex::encode(roots_element[0].to_vec()));
-		println!(
-			"test nullifier hash: {:?}",
-			hex::encode(nullifier_hash_element.to_vec())
-		);
-		println!("test leaf: {:?}", hex::encode(nullifier_hash_element.to_vec()));
-		println!("test leaf private: {:?}", hex::encode(leaf_private));
-
-		secr.append(&mut leaf_element.to_vec());
-		secr.append(&mut nullifier_hash_element.to_vec());
 		// wasm-utils
 		let mut note_builder = NoteBuilder::default();
 		note_builder.backend = types::Backend::Arkworks;
@@ -172,13 +141,12 @@ fn mixer_works() {
 		note_builder.exponentiation = "5".to_string();
 		note_builder.amount = "1".to_string();
 		note_builder.hash_function = types::HashFunction::Poseidon;
-		note_builder.secrets = Some(secr.clone());
 		let deposit_note = note_builder.generate_note().unwrap();
-
+		let leaf = NoteBuilder::get_leaf(&deposit_note).unwrap();
 		// Making the proof
 		let mut proof_builder = ZkProofBuilder::new();
 		let mut leaf_slice = [0u8; 32];
-		leaf_slice.copy_from_slice(&leaf_element.to_vec()[..]);
+		leaf_slice.copy_from_slice(&leaf[..]);
 		proof_builder.set_leaves(&vec![leaf_slice]);
 		proof_builder.set_note(deposit_note);
 		proof_builder.set_fee(fee_value);
@@ -199,25 +167,17 @@ fn mixer_works() {
 				proof_meta
 			}
 		};
-		// same root
-		assert_eq!(hex::encode(&roots_element[0].to_bytes()), hex::encode(&root_meta.root));
-		// same nullifier
-		assert_eq!(
-			hex::encode(&nullifier_hash_element.to_bytes()),
-			hex::encode(root_meta.nullified_hash.clone())
-		);
 
 		// assert_eq!(hex::encode(&proof_bytes), hex::encode(&proof_bytes_wasm));
 		assert_ok!(Mixer::deposit(
 			Origin::signed(sender_account_id.clone()),
 			tree_id,
-			leaf_element,
+			Element::from_bytes(&leaf),
 		));
 		// check the balance before the withdraw.
 		let balance_before = Balances::free_balance(recipient_account_id.clone());
 
 		let mixer_tree_root = MerkleTree::get_root(tree_id).unwrap();
-		assert_eq!(roots_element[0], mixer_tree_root);
 		assert_ok!(Mixer::withdraw(
 			Origin::signed(sender_account_id),
 			tree_id,

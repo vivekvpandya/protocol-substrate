@@ -1,4 +1,4 @@
-use ark_ff::{BigInteger, FromBytes, PrimeField};
+use ark_ff::{to_bytes, BigInteger, FromBytes, PrimeField};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use arkworks_circuits::setup::{
 	common::setup_tree_and_create_path_tree_x5,
@@ -6,6 +6,7 @@ use arkworks_circuits::setup::{
 		prove_groth16_circuit_x5, setup_arbitrary_data, setup_groth16_random_circuit_x5, setup_leaf_x5, Circuit_x5,
 	},
 };
+
 use arkworks_gadgets::prelude::ark_groth16::ProvingKey;
 
 use arkworks_utils::{
@@ -108,13 +109,8 @@ pub fn setup_zk_circuit(
 
 			let nullifier_hash_element = Element::from_bytes(&nullifier_hash.into_repr().to_bytes_le());
 			let leaf_element = Element::from_bytes(&leaf.into_repr().to_bytes_le());
-			let mut private_bytes = Vec::new();
-			let mut nul = Vec::new();
-			let mut sec = Vec::new();
-			leaf_private.secret().serialize(&mut sec).unwrap();
-			leaf_private.nullifier().serialize(&mut nul).unwrap();
-			private_bytes.append(&mut sec);
-			private_bytes.append(&mut nul);
+			let mut private_bytes = to_bytes![leaf_private.secret(), leaf_private.nullifier()].unwrap();
+
 			(
 				proof_bytes,
 				roots_element,
@@ -173,13 +169,8 @@ pub fn setup_zk_circuit(
 
 			let leaf_element = Element::from_bytes(&leaf.into_repr().to_bytes_le());
 
-			let mut private_bytes = Vec::new();
-			let mut nul = Vec::new();
-			let mut sec = Vec::new();
-			leaf_private.secret().serialize(&mut sec).unwrap();
-			leaf_private.nullifier().serialize(&mut nul).unwrap();
-			private_bytes.append(&mut sec);
-			private_bytes.append(&mut nul);
+			let mut private_bytes = to_bytes![leaf_private.secret(), leaf_private.nullifier()].unwrap();
+
 			(
 				proof_bytes,
 				roots_element,
