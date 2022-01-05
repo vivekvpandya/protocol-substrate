@@ -111,12 +111,18 @@ pub mod pallet {
 		type WrappingFeeDivider: Get<BalanceOf<Self>>;
 
 		type WeightInfo: WeightInfo;
+
+		type GetAdminKey: dkg_runtime_primitives::traits::GetDKGPublicKey;
 	}
 
 	#[pallet::storage]
 	#[pallet::getter(fn wrapping_fee_percent)]
 	/// Percentage of amount to be used as wrapping fee
 	pub type WrappingFeePercent<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn wrapping_fee_update_nonce)]
+	pub type WrappingFeeUpdateNonce<T: Config> = StorageValue<_, u32, ValueQuery>;
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -157,7 +163,29 @@ pub mod pallet {
 			ensure_root(origin)?;
 
 			WrappingFeePercent::<T>::put(fee);
+			WrappingFeeUpdateNonce::<T>::put(WrappingFeeUpdateNonce::<T>::get() + 1);
+			Self::deposit_event(Event::UpdatedWrappingFeePercent {
+				wrapping_fee_percent: fee,
+			});
+			Ok(().into())
+		}
 
+		#[pallet::weight(<T as Config>::WeightInfo::set_wrapping_fee())]
+		pub fn set_wrapping_fee_with_sig(
+			origin: OriginFor<T>,
+			fee: BalanceOf<T>,
+			sig: Vec<u8>,
+		) -> DispatchResultWithPostInfo {
+			ensure_signed(origin)?;
+
+			let mut buf = vec![];
+			buf.extend_from_slice(&Self::wrapping_fee_update_nonce().to_le_bytes());
+			buf.extend_from_slice(&fee.encode());
+			dkg_runtime_primitives::ensure_signed_by_dkg::<T::GetAdminKey>(sig, buf)?;
+
+			WrappingFeePercent::<T>::put(fee);
+
+			WrappingFeeUpdateNonce::<T>::put(WrappingFeeUpdateNonce::<T>::get() + 1);
 			Self::deposit_event(Event::UpdatedWrappingFeePercent {
 				wrapping_fee_percent: fee,
 			});

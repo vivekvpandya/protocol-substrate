@@ -29,6 +29,8 @@ sp-arithmetic = { default-features = false, git = "https://github.com/paritytech
 sp-runtime = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "master" }
 sp-std = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "master" }
 
+dkg-runtime-primitives = { default-features = false, git = "https://github.com/webb-tools/dkg-substrate.git", branch = "master" }
+
 # Optionals
 frame-system-benchmarking = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "master", optional = true }
 frame-benchmarking = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "master", optional = true }
@@ -54,4 +56,5 @@ std = [
   "sp-std/std",
   "sp-api/std",
   "frame-benchmarking/std",
+  "dkg-runtime-primitives/std",
 ]

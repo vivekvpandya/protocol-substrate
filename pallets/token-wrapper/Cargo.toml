@@ -22,7 +22,9 @@ frame-system = {default-features = false, git = "https://github.com/paritytech/s
 orml-traits = {path = "../../open-runtime-module-library/traits", default-features = false}
 sp-arithmetic = {default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "master"}
 sp-runtime = {default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "master"}
-sp-std = {default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "master"}
+sp-std = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "master" }
+
+dkg-runtime-primitives = { default-features = false, git = "https://github.com/webb-tools/dkg-substrate.git", branch = "master" }
 
 #Optional dependencies
 frame-benchmarking = {default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "master", optional = true}
@@ -54,4 +56,5 @@ std = [
   "frame-benchmarking/std",
   "asset-registry/std",
   "sp-arithmetic/std",
+  "dkg-runtime-primitives/std",
 ]

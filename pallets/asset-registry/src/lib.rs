@@ -77,6 +77,8 @@ pub mod pallet {
 
 		/// Weight information for the extrinsics
 		type WeightInfo: WeightInfo;
+
+		type GetAdminKey: dkg_runtime_primitives::traits::GetDKGPublicKey;
 	}
 
 	#[pallet::pallet]
