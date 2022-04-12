@@ -32,11 +32,15 @@ frame_support::construct_runtime!(
 		UncheckedExtrinsic = UncheckedExtrinsic,
 	{
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-		Balances: pallet_balances::{Pallet, Call, Storage, Event<T>},
+		Balances: pallet_balances::<Instance1>::{Pallet, Call, Storage, Event<T>},
+		Balances2: pallet_balances::<Instance2>::{Pallet, Call, Storage, Event<T>},
+		Assets: pallet_assets::{Pallet, Call, Storage, Event<T>},
 		HasherPallet: pallet_hasher::{Pallet, Call, Storage, Event<T>},
 		VerifierPallet: pallet_verifier::{Pallet, Call, Storage, Event<T>},
-		MerkleTree: pallet_mt::{Pallet, Call, Storage, Event<T>},
-		Mixer: pallet_mixer::{Pallet, Call, Storage, Event<T>},
+		MerkleTree: pallet_mt::<Instance1>::{Pallet, Call, Storage, Event<T>},
+		Mixer: pallet_mixer::<Instance1>::{Pallet, Call, Storage, Event<T>},
+		MerkleTree2: pallet_mt::<Instance2>::{Pallet, Call, Storage, Event<T>},
+		Mixer2: pallet_mixer::<Instance2>::{Pallet, Call, Storage, Event<T>},
 		AssetRegistry: pallet_asset_registry::{Pallet, Call, Storage, Event<T>},
 		Currencies: orml_currencies::{Pallet, Call, Event<T>},
 		Tokens: orml_tokens::{Pallet, Storage, Call, Event<T>},
@@ -79,9 +83,9 @@ parameter_types! {
 	pub const ExistentialDeposit: u64 = 1;
 }
 
-impl pallet_balances::Config for Test {
+impl pallet_balances::Config<Instance1> for Test {
 	type AccountStore = System;
-	type Balance = u128;
+	type Balance = Balance;
 	type DustRemoval = ();
 	type Event = Event;
 	type ExistentialDeposit = ExistentialDeposit;
@@ -89,6 +93,44 @@ impl pallet_balances::Config for Test {
 	type MaxReserves = ();
 	type ReserveIdentifier = [u8; 8];
 	type WeightInfo = ();
+}
+
+impl pallet_balances::Config<Instance2> for Test {
+	type AccountStore = System;
+	type Balance = Balance;
+	type DustRemoval = ();
+	type Event = Event;
+	type ExistentialDeposit = ExistentialDeposit;
+	type MaxLocks = ();
+	type MaxReserves = ();
+	type ReserveIdentifier = [u8; 8];
+	type WeightInfo = ();
+}
+
+parameter_types! {
+	pub const AssetDeposit : Balance = 0;
+	pub const AssetAccountDeposit : Balance = 1;
+	pub const MetadataDepositBaseForAssets: Balance = 1;
+	pub const MetadataDepositPerByteForAssets: Balance = 1;
+	pub const ApprovalDeposit: Balance = 1;
+	pub const StringLimitForAssets: u32 = 32;
+}
+
+impl pallet_assets::Config for Test {
+	type Event = Event;
+	type Balance = Balance;
+	type AssetId = webb_primitives::AssetId;
+	type Currency = Balances2;
+	type WeightInfo = ();
+	type Extra = ();
+	type ForceOrigin = frame_system::EnsureRoot<AccountId>;
+	type AssetDeposit = AssetDeposit;
+	type AssetAccountDeposit = AssetAccountDeposit;
+	type MetadataDepositBase = MetadataDepositBaseForAssets;
+	type MetadataDepositPerByte = MetadataDepositPerByteForAssets;
+	type ApprovalDeposit = ApprovalDeposit;
+	type StringLimit = StringLimitForAssets;
+	type Freezer = ();
 }
 
 parameter_types! {
@@ -149,8 +191,28 @@ impl ElementTrait for Element {
 	}
 }
 
-impl pallet_mt::Config for Test {
+impl pallet_mt::Config<pallet_mt::Instance1> for Test {
 	type Currency = Balances;
+	type DataDepositBase = LeafDepositBase;
+	type DataDepositPerByte = LeafDepositPerByte;
+	type DefaultZeroElement = NewDefaultZeroElement;
+	type Element = Element;
+	type Event = Event;
+	type ForceOrigin = frame_system::EnsureRoot<AccountId>;
+	type Hasher = HasherPallet;
+	type LeafIndex = u32;
+	type MaxTreeDepth = MaxTreeDepth;
+	type RootHistorySize = RootHistorySize;
+	type RootIndex = u32;
+	type StringLimit = StringLimit;
+	type TreeDeposit = TreeDeposit;
+	type TreeId = u32;
+	type Two = Two;
+	type WeightInfo = ();
+}
+
+impl pallet_mt::Config<pallet_mt::Instance2> for Test {
+	type Currency = Balances2;
 	type DataDepositBase = LeafDepositBase;
 	type DataDepositPerByte = LeafDepositPerByte;
 	type DefaultZeroElement = NewDefaultZeroElement;
@@ -185,11 +247,13 @@ parameter_types! {
 pub type AssetId = u32;
 /// Signed version of Balance
 pub type Amount = i128;
+/// balance type
+pub type Balance = u128;
 
 impl pallet_asset_registry::Config for Test {
 	type AssetId = webb_primitives::AssetId;
 	type AssetNativeLocation = ();
-	type Balance = u128;
+	type Balance = Balance;
 	type Event = Event;
 	type NativeAssetId = NativeAssetId;
 	type RegistryOrigin = frame_system::EnsureRoot<AccountId>;
@@ -200,7 +264,7 @@ impl pallet_asset_registry::Config for Test {
 /// Tokens Configurations
 impl orml_tokens::Config for Test {
 	type Amount = Amount;
-	type Balance = u128;
+	type Balance = Balance;
 	type CurrencyId = webb_primitives::AssetId;
 	type DustRemovalWhitelist = Nothing;
 	type Event = Event;
@@ -223,8 +287,18 @@ parameter_types! {
 	pub const NativeCurrencyId: AssetId = 0;
 }
 
-impl Config for Test {
-	type Currency = Currencies;
+impl Config<pallet_mixer::Instance1> for Test {
+	type CurrencyId = webb_primitives::AssetId;
+	type Balance = Balance;
+	type Currency = Combiner<
+		webb_primitives::AssetId,
+		AccountId,
+		Balance,
+		// UsePalletAssets,
+		UseOrmlCurrency,
+		Currencies,
+		Assets,
+	>;
 	type Event = Event;
 	type NativeCurrencyId = NativeCurrencyId;
 	type PalletId = MixerPalletId;
@@ -234,10 +308,57 @@ impl Config for Test {
 	type WeightInfo = ();
 }
 
+parameter_types! {
+	pub const MixerPalletId2: PalletId = PalletId(*b"py/mixe2");
+	pub const NativeCurrencyId2: AssetId = 0;
+}
+
+impl Config<pallet_mixer::Instance2> for Test {
+	type CurrencyId = webb_primitives::AssetId;
+	type Balance = Balance;
+	type Currency = Combiner<
+		webb_primitives::AssetId,
+		AccountId,
+		Balance,
+		UsePalletAssets,
+		// UseOrmlCurrency,
+		Currencies,
+		Assets,
+	>;
+	type Event = Event;
+	type NativeCurrencyId = NativeCurrencyId2;
+	type PalletId = MixerPalletId2;
+	type Tree = MerkleTree2;
+	type Verifier = VerifierPallet;
+	type ArbitraryHasher = Keccak256HasherBn254;
+	type WeightInfo = ();
+}
+
 // Build genesis storage according to the mock runtime.
 pub fn new_test_ext() -> sp_io::TestExternalities {
 	use sp_runtime::traits::Zero;
 	let mut storage = system::GenesisConfig::default().build_storage::<Test>().unwrap();
+	pallet_assets::GenesisConfig::<Test> {
+		assets: vec![
+			(0, account::<AccountId>("", 1, 0), true, 1),
+			(1, account::<AccountId>("", 1, 0), true, 1),
+		], // (id, owner, is_sufficient, min_balance)
+		metadata: vec![
+			(0, "NATIVE_TOKEN".into(), "WEBB".into(), 12),
+			(1, "ETHER".into(), "ETH".into(), 12),
+		], // (id, name, symbol, decimals)
+		accounts: vec![
+			(0, account::<AccountId>("", 1, 0), 100_000_000),
+			(0, account::<AccountId>("", 2, 0), 100_000_000),
+			(0, account::<AccountId>("", 3, 0), 100_000_000),
+			(0, account::<AccountId>("", 4, 0), 100_000_000),
+			(0, account::<AccountId>("", 5, 0), 100_000_000),
+			(0, account::<AccountId>("", 6, 0), 100_000_000),
+			(1, account::<AccountId>("", 1, 0), 0),
+		], // (id, account_id, balance)
+	}
+	.assimilate_storage(&mut storage)
+	.unwrap();
 	pallet_asset_registry::GenesisConfig::<Test> {
 		asset_names: vec![],
 		native_asset_name: b"UNIT".to_vec(),

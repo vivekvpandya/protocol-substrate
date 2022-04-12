@@ -64,13 +64,18 @@ pub mod types;
 pub mod weights;
 use types::MixerMetadata;
 
-use codec::Encode;
+use codec::{Encode, FullCodec, MaxEncodedLen};
 use frame_support::{
-	ensure, pallet_prelude::DispatchError, sp_runtime::traits::AccountIdConversion, traits::Get,
+	dispatch::DispatchResult,
+	ensure,
+	pallet_prelude::DispatchError,
+	sp_runtime::traits::AccountIdConversion,
+	traits::{fungibles, Get},
 	PalletId,
 };
-use orml_traits::{currency::transactional, MultiCurrency};
-use sp_std::prelude::*;
+use orml_traits::currency::transactional;
+use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize};
+use sp_std::{fmt::Debug, prelude::*};
 use webb_primitives::{
 	hasher::InstanceHasher,
 	traits::{
@@ -83,13 +88,94 @@ use webb_primitives::{
 pub use pallet::*;
 pub use weights::WeightInfo;
 
-/// Type alias for the orml_traits::MultiCurrency::Balance type
-pub type BalanceOf<T, I> =
-	<<T as Config<I>>::Currency as MultiCurrency<<T as frame_system::Config>::AccountId>>::Balance;
-/// Type alias for the orml_traits::MultiCurrency::CurrencyId type
-pub type CurrencyIdOf<T, I> = <<T as pallet::Config<I>>::Currency as MultiCurrency<
-	<T as frame_system::Config>::AccountId,
->>::CurrencyId;
+pub trait CheckIfOrmlUsed {
+	fn is_orml_used() -> bool;
+}
+
+pub struct UsePalletAssets;
+impl CheckIfOrmlUsed for UsePalletAssets {
+	fn is_orml_used() -> bool {
+		false
+	}
+}
+
+pub struct UseOrmlCurrency;
+impl CheckIfOrmlUsed for UseOrmlCurrency {
+	fn is_orml_used() -> bool {
+		true
+	}
+}
+
+pub trait WebbCurrency<AssetId, AccountId, Balance> {
+	fn transfer(
+		asset: AssetId,
+		from: &AccountId,
+		to: &AccountId,
+		amount: Balance,
+	) -> Result<(), DispatchError>;
+	fn free_balance(asset: AssetId, who: &AccountId) -> Balance;
+	fn mint_into(asset: AssetId, who: &AccountId, amount: Balance) -> DispatchResult;
+}
+
+pub struct Combiner<AssetId, AccountId, Balance, Check, A, B>(
+	sp_std::marker::PhantomData<(AssetId, AccountId, Balance, Check, A, B)>,
+);
+
+impl<AssetId, AccountId, Balance, Check, A, B> WebbCurrency<AssetId, AccountId, Balance>
+	for Combiner<AssetId, AccountId, Balance, Check, A, B>
+where
+	A: orml_traits::MultiCurrency<AccountId>,
+	B: fungibles::Transfer<AccountId> + fungibles::Mutate<AccountId>,
+	Check: CheckIfOrmlUsed,
+	Balance: Into<<A as orml_traits::MultiCurrency<AccountId>>::Balance>
+		+ Into<<B as fungibles::Inspect<AccountId>>::Balance>
+		+ From<<A as orml_traits::MultiCurrency<AccountId>>::Balance>
+		+ From<<B as fungibles::Inspect<AccountId>>::Balance>,
+	AssetId: Into<<A as orml_traits::MultiCurrency<AccountId>>::CurrencyId>
+		+ Into<<B as fungibles::Inspect<AccountId>>::AssetId>,
+{
+	fn transfer(
+		asset: AssetId,
+		from: &AccountId,
+		to: &AccountId,
+		amount: Balance,
+	) -> Result<(), DispatchError> {
+		if Check::is_orml_used() {
+			sp_std::if_std! {
+				println!("Uses ORML");
+			}
+			let asset = asset.into();
+			let amount = amount.into();
+			A::transfer(asset, from, to, amount)?;
+		} else {
+			sp_std::if_std! {
+				println!("Uses Assets");
+			}
+			let asset = asset.into();
+			let amount = amount.into();
+			B::transfer(asset, from, to, amount, false)?;
+		}
+		Ok(())
+	}
+	fn free_balance(asset: AssetId, who: &AccountId) -> Balance {
+		let balance: Balance = if Check::is_orml_used() {
+			Balance::from(A::free_balance(asset.into(), who))
+		} else {
+			Balance::from(B::reducible_balance(asset.into(), who, false))
+		};
+		balance
+	}
+	fn mint_into(asset: AssetId, who: &AccountId, amount: Balance) -> DispatchResult {
+		if Check::is_orml_used() {
+			A::deposit(asset.into(), who, amount.into())?;
+		} else {
+			B::mint_into(asset.into(), who, amount.into())?;
+		}
+		Ok(())
+	}
+}
+pub type BalanceOf<T, I> = <T as Config<I>>::Balance;
+pub type CurrencyIdOf<T, I> = <T as Config<I>>::CurrencyId;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -121,8 +207,28 @@ pub mod pallet {
 		/// Arbitrary data hasher
 		type ArbitraryHasher: InstanceHasher;
 
+		/// The asset identifier.
+		type CurrencyId: FullCodec
+			+ Eq
+			+ PartialEq
+			+ Copy
+			+ MaybeSerializeDeserialize
+			+ Debug
+			+ scale_info::TypeInfo
+			+ MaxEncodedLen;
+
+		/// The balance of an account.
+		type Balance: AtLeast32BitUnsigned
+			+ FullCodec
+			+ Copy
+			+ MaybeSerializeDeserialize
+			+ Debug
+			+ Default
+			+ scale_info::TypeInfo
+			+ MaxEncodedLen;
+
 		/// Currency type for taking deposits
-		type Currency: MultiCurrency<Self::AccountId>;
+		type Currency: WebbCurrency<Self::CurrencyId, Self::AccountId, Self::Balance>;
 
 		/// Native currency id
 		#[pallet::constant]
@@ -344,8 +450,8 @@ impl<T: Config<I>, I: 'static>
 		};
 		let recipient_bytes = truncate_and_pad(&recipient.using_encoded(element_encoder)[..]);
 		let relayer_bytes = truncate_and_pad(&relayer.using_encoded(element_encoder)[..]);
-		let fee_bytes = fee.using_encoded(element_encoder);
-		let refund_bytes = refund.using_encoded(element_encoder);
+		let _fee_bytes = fee.using_encoded(element_encoder);
+		let _refund_bytes = refund.using_encoded(element_encoder);
 
 		let mut arbitrary_data_bytes = Vec::new();
 		arbitrary_data_bytes.extend_from_slice(&recipient_bytes);
@@ -420,6 +526,16 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 		let mixer = Self::mixers(id);
 		ensure!(mixer.is_some(), Error::<T, I>::NoMixerFound);
 		Ok(mixer.unwrap())
+	}
+
+	// TODO: This is not good, as to check free balances I am using pallet mixer instead of
+	// pallet_balances directly.
+	fn free_balance(asset: T::CurrencyId, who: T::AccountId) -> T::Balance {
+		<T as pallet::Config<I>>::Currency::free_balance(asset, &who)
+	}
+
+	fn mint_into(asset: T::CurrencyId, who: T::AccountId, amount: T::Balance) -> DispatchResult {
+		<T as pallet::Config<I>>::Currency::mint_into(asset, &who, amount)
 	}
 }
 
